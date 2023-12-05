@@ -57,7 +57,7 @@ export class UsersHandler {
 
     await client.hSet(cacheKeyMapper.mapUser(userId), this.userDataSerializer.serialize(attrs));
     await client.sAdd(cacheKeyMapper.mapUsernames(), attrs.username);
-    await client.zAdd(cacheKeyMapper.mapUsernamesItems(), {
+    await client.zAdd(cacheKeyMapper.mapUsernamesWithId(), {
       value: attrs.username,
       score: this.hexDecConverter.toDec(userId), // convert hexadecimal userId into 10-based decimal format
     });
@@ -76,7 +76,7 @@ export class UsersHandler {
 
 
   async getUserByUsername(username: string) {
-    const idDec = await client.zScore(cacheKeyMapper.mapUsernamesItems(), username);
+    const idDec = await client.zScore(cacheKeyMapper.mapUsernamesWithId(), username);
 
     if (!idDec) {
       throw new Error('User does not exist');

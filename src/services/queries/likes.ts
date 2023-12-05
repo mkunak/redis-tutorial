@@ -6,7 +6,7 @@ export class LikesHandler {
   constructor(private itemHandler: ItemHandler) {}
 
   async likeItem(itemId: string, userId: string) {
-    const inserted = await client.sAdd(cacheKeyMapper.mapLike(userId), itemId);
+    const inserted = await client.sAdd(cacheKeyMapper.mapUserLikes(userId), itemId);
 
     if (inserted) {
       return await client.hIncrBy(cacheKeyMapper.mapItem(itemId), 'likes', 1);
@@ -14,7 +14,7 @@ export class LikesHandler {
   }
 
   async unlikeItem(itemId: string, userId: string) {
-    const removed = await client.sRem(cacheKeyMapper.mapLike(userId), itemId);
+    const removed = await client.sRem(cacheKeyMapper.mapUserLikes(userId), itemId);
 
     if (removed) {
       return await client.hIncrBy(cacheKeyMapper.mapItem(itemId), 'likes', -1);
@@ -22,17 +22,17 @@ export class LikesHandler {
   }
 
   async userLikesItem(itemId: string, userId: string) {
-    await client.sIsMember(cacheKeyMapper.mapLike(userId), itemId);
+    await client.sIsMember(cacheKeyMapper.mapUserLikes(userId), itemId);
   }
 
   async likedItems(userId: string) {
-    const ids = await client.sMembers(cacheKeyMapper.mapLike(userId));
+    const ids = await client.sMembers(cacheKeyMapper.mapUserLikes(userId));
 
     return await this.itemHandler.getItems(ids);
   }
 
   async commonLikedItems(...userIds: string[]) {
-    const ids = await client.sInter(userIds.map((userId) => cacheKeyMapper.mapLike(userId)));
+    const ids = await client.sInter(userIds.map((userId) => cacheKeyMapper.mapUserLikes(userId)));
 
     return await this.itemHandler.getItems(ids);
   }

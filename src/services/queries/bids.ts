@@ -1,7 +1,8 @@
-import { cacheKeyMapper } from '$services/keys';
-import { client, type IDataSerializer } from '$services/redis';
-import type { CreateBidAttrs, Bid } from '$services/types';
 import { DateTime } from 'luxon';
+
+import { cacheKeyMapper } from '$services/keys';
+import { client, withLock, type IDataSerializer } from '$services/redis';
+import type { CreateBidAttrs, Bid } from '$services/types';
 import { ItemHandler } from './items';
 
 
@@ -29,35 +30,73 @@ const bidDataSerializer = new BidDataSerializer();
 
 
 export const createBid = async (attrs: CreateBidAttrs) => {
-	return client.executeIsolated(async (isolatedClient) => {
-		await isolatedClient.watch(cacheKeyMapper.mapItem(attrs.itemId));
-
+	return withLock(attrs.itemId, async (signal: any) => {
 		const item = await itemHandler.getItem(attrs.itemId);
-	
+
 		if (!item) {
 			throw new Error(`Item with id ${attrs.itemId} does not exist`);
 		}
 		if (item.price >= attrs.amount) {
-			throw new Error(`Item's bid is too low`);
+			throw new Error(`Item's bid is too low. Last bid is ${item.price}`);
 		}
 		if (item.endingAt.diff(DateTime.now()).toMillis() < 0) {
 			throw new Error('Item closed to bidding');
 		}
-	
+
+		const serialized = bidDataSerializer.serialize({
+			amount: attrs.amount,
+			createdAt: attrs.createdAt,
+		});
+
+		if (signal.expired) {
+			throw new Error('Lock expired. Can not write any more data');
+		}
+
+		return Promise.all([
+			client.rPush(cacheKeyMapper.mapItemBids(attrs.itemId), serialized),
+			client.hSet(cacheKeyMapper.mapItem(attrs.itemId), {
+				bids: item.bids + 1,
+				price: attrs.amount,
+				highestBidUserId: attrs.userId,
+			}),
+			client.zAdd(cacheKeyMapper.mapItemsPrice(), {
+				value: attrs.itemId,
+				score: attrs.amount,
+			}),
+		])
+	});
+};
+
+export const createBidWithWatcher = async (attrs: CreateBidAttrs) => {
+  return client.executeIsolated(async (isolatedClient) => {
+		await isolatedClient.watch(cacheKeyMapper.mapItem(attrs.itemId));
+
+		const item = await itemHandler.getItem(attrs.itemId);
+
+		if (!item) {
+			throw new Error(`Item with id ${attrs.itemId} does not exist`);
+		}
+		if (item.price >= attrs.amount) {
+			throw new Error(`Item's bid is too low. Last bid is ${item.price}`);
+		}
+		if (item.endingAt.diff(DateTime.now()).toMillis() < 0) {
+			throw new Error('Item closed to bidding');
+		}
+
 		const serialized = bidDataSerializer.serialize({
 			amount: attrs.amount,
 			createdAt: attrs.createdAt,
 		});
 
 		return isolatedClient
-			.multi()
-			.rPush(cacheKeyMapper.mapBids(attrs.itemId), serialized)
+      .multi()
+			.rPush(cacheKeyMapper.mapItemBids(attrs.itemId), serialized)
 			.hSet(cacheKeyMapper.mapItem(attrs.itemId), {
 				bids: item.bids + 1,
 				price: attrs.amount,
 				highestBidUserId: attrs.userId,
 			})
-			.zAdd(cacheKeyMapper.mapItemsPrice(), {
+      .zAdd(cacheKeyMapper.mapItemsPrice(), {
 				value: attrs.itemId,
 				score: attrs.amount,
 			})
@@ -68,7 +107,7 @@ export const createBid = async (attrs: CreateBidAttrs) => {
 export const getBidHistory = async (itemId: string, offset = 0, count = 10): Promise<Bid[]> => {
 	const startIndex = -1 * offset - count;
 	const stopIndex = -1 - offset;
-	const range = await client.lRange(cacheKeyMapper.mapBids(itemId), startIndex, stopIndex);
+	const range = await client.lRange(cacheKeyMapper.mapItemBids(itemId), startIndex, stopIndex);
 
 	return range.map((bidItem) => bidDataSerializer.deserialize(bidItem));
 };

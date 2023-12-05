@@ -1,5 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { itemsByUser } from '$services/queries/items';
+import { ItemHandler } from '$services/queries/items';
+
+const itemHandler = new ItemHandler();
 
 export const get: RequestHandler<any, any> = async ({ url, locals }) => {
 	const sort = {
@@ -10,7 +12,7 @@ export const get: RequestHandler<any, any> = async ({ url, locals }) => {
 		tag: (url.searchParams.get('tag') ?? '').replace(/[^a-zA-Z0-9 -]/gi, '')
 	};
 
-	const { items, totalPages } = await itemsByUser(locals.session.userId, sort);
+	const { items, totalPages } = await itemHandler.itemsByUser(locals.session.userId, sort);
 
 	return {
 		body: { items, totalPages }

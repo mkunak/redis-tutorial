@@ -1,65 +1,51 @@
-export enum ECacheKeyMainPrefix {
-  HTML = 'html',
-  DATA = 'data',
-  LOCK = 'lock',
-  IDX = 'idx',
+const ECacheKeyMainPrefix = {
+  HTML: 'html',
+  DATA: 'data',
+  LOCK: 'lock',
+  IDX: 'idx',
 }
 
-export enum ECacheKeyDatabaseDataType {
-  HASH = 'hash',
-  STRING = 'string',
-  PUBSUB = 'pubsub',
-  STREAM = 'stream',
-  SET = 'set',
-  SORTED_SET = 'sortedSet',
-  HYPER_LOG_LOG = 'hyperLogLog',
-  LIST = 'list',
+const ECacheKeyDatabaseDataType = {
+  HASH: 'hash',
+  STRING: 'string',
+  PUBSUB: 'pubsub',
+  STREAM: 'stream',
+  SET: 'set',
+  SORTED_SET: 'sortedSet',
+  HYPER_LOG_LOG: 'hyperLogLog',
+  LIST: 'list',
 }
 
-export enum EDatabaseModel {
-  PAGES = 'pages',
-  COMPONENTS = 'components',
-  VIEWS = 'views',
-  LIKES = 'likes',
-  USERS = 'users',
-  SESSIONS = 'sessions',
-  BIDS = 'bids',
-  ITEMS = 'items',
-  USERNAMES = 'usernames',
+const EDatabaseModel = {
+  PAGES: 'pages',
+  COMPONENTS: 'components',
+  VIEWS: 'views',
+  LIKES: 'likes',
+  USERS: 'users',
+  SESSIONS: 'sessions',
+  BIDS: 'bids',
+  ITEMS: 'items',
+  USERNAMES: 'usernames',
 }
 
-export enum EDatabaseModelKey {
-  ID = 'id',
-  ENDING_AT = 'endingAt',
-  PRICE = 'price',
+const EDatabaseModelKey = {
+  ID: 'id',
+  ENDING_AT: 'endingAt',
+  PRICE: 'price',
 }
 
-export type TCacheKeyPrefix =
-  ECacheKeyMainPrefix |
-  ECacheKeyDatabaseDataType |
-  EDatabaseModel |
-  EDatabaseModelKey
+class CacheKeyBuilder {
+  prefixSeparator = ':';
+  idSeparator = '#';
 
+  prefixes = [];
 
-interface ICacheKeyBuilder {
-  addKeyPrefix: (prefix: TCacheKeyPrefix) => {};
-  addKeyId: (id: string, model: EDatabaseModel) => {};
-  build: () => string;
-  buildLock: (key: string) => string;
-}
-
-export class CacheKeyBuilder implements ICacheKeyBuilder {
-  private prefixSeparator = ':';
-  private idSeparator = '#';
-
-  private prefixes: string[] = [];
-
-  addKeyPrefix(prefix: TCacheKeyPrefix) {
+  addKeyPrefix(prefix) {
     this.prefixes.push(prefix);
     return this;
   }
 
-  addKeyId(id: string, model: EDatabaseModel) {
+  addKeyId(id, model) {
     this.prefixes.push(`${model}${this.idSeparator}${id}`);
     return this;
   };
@@ -72,7 +58,7 @@ export class CacheKeyBuilder implements ICacheKeyBuilder {
     return cacheKey;
   }
 
-  buildLock(key: string) {
+  buildLock(key) {
     this.prefixes = key.split(this.prefixSeparator);
     this.prefixes[0] = ECacheKeyMainPrefix.LOCK;
 
@@ -80,29 +66,14 @@ export class CacheKeyBuilder implements ICacheKeyBuilder {
   }
 }
 
+export class CacheKeyMapper {
+  cacheKeyBuilder;
 
-interface ICacheKeyMapper {
-  mapPage: (id: string) => string;
-  mapUser: (id: string) => string;
-  mapUsernames: () => string;
-  mapUsernamesWithId: () => string;
-  mapSession: (id: string) => string;
-  mapItem: (id: string) => string;
-  mapItemsIndex: (id: string) => string;
-  mapItemsViews: (id: string) => string;
-  mapItemViews: (id: string) => string;
-  mapItemsEndingAt: (id: string) => string;
-  mapItemsPrice: () => string;
-  mapItemsBids: () => string;
-  mapUserLikes: (id: string) => string;
-  mapItemBids: (id: string) => string;
-  mapLock: (key: string) => string;
-}
+  constructor(cacheKeyBuilder) {
+    this.cacheKeyBuilder = cacheKeyBuilder;
+  }
 
-export class CacheKeyMapper implements ICacheKeyMapper {
-  constructor(private cacheKeyBuilder: CacheKeyBuilder) {}
-
-  mapPage = (pageRoute: string) => {
+  mapPage = (pageRoute) => {
     return this.cacheKeyBuilder
       .addKeyPrefix(ECacheKeyMainPrefix.HTML)
       .addKeyPrefix(ECacheKeyDatabaseDataType.STRING)
@@ -110,7 +81,7 @@ export class CacheKeyMapper implements ICacheKeyMapper {
       .build();
   }
 
-  mapUser = (id: string) => {
+  mapUser = (id) => {
     return this.cacheKeyBuilder
       .addKeyPrefix(ECacheKeyMainPrefix.DATA)
       .addKeyPrefix(ECacheKeyDatabaseDataType.HASH)
@@ -135,7 +106,7 @@ export class CacheKeyMapper implements ICacheKeyMapper {
       .build();
   }
 
-  mapSession = (id: string) => {
+  mapSession = (id) => {
     return this.cacheKeyBuilder
       .addKeyPrefix(ECacheKeyMainPrefix.DATA)
       .addKeyPrefix(ECacheKeyDatabaseDataType.HASH)
@@ -143,7 +114,7 @@ export class CacheKeyMapper implements ICacheKeyMapper {
       .build();
   }
 
-  mapItem = (id: string = '') => {
+  mapItem = (id = '') => {
     return this.cacheKeyBuilder
       .addKeyPrefix(ECacheKeyMainPrefix.DATA)
       .addKeyPrefix(ECacheKeyDatabaseDataType.HASH)
@@ -168,7 +139,7 @@ export class CacheKeyMapper implements ICacheKeyMapper {
       .build();
   }
 
-  mapItemViews = (id: string) => {
+  mapItemViews = (id) => {
     return this.cacheKeyBuilder
       .addKeyPrefix(ECacheKeyMainPrefix.DATA)
       .addKeyPrefix(ECacheKeyDatabaseDataType.HYPER_LOG_LOG)
@@ -204,7 +175,7 @@ export class CacheKeyMapper implements ICacheKeyMapper {
       .build();
   }
 
-  mapUserLikes = (id: string) => {
+  mapUserLikes = (id) => {
     return this.cacheKeyBuilder
       .addKeyPrefix(ECacheKeyMainPrefix.DATA)
       .addKeyPrefix(ECacheKeyDatabaseDataType.SET)
@@ -213,7 +184,7 @@ export class CacheKeyMapper implements ICacheKeyMapper {
       .build();
   }
 
-  mapUserItems = (id: string) => {
+  mapUserItems = (id) => {
     return this.cacheKeyBuilder
       .addKeyPrefix(ECacheKeyMainPrefix.DATA)
       .addKeyPrefix(ECacheKeyDatabaseDataType.SET)
@@ -222,7 +193,7 @@ export class CacheKeyMapper implements ICacheKeyMapper {
       .build();
   }
 
-  mapUserBids = (id: string) => {
+  mapUserBids = (id) => {
     return this.cacheKeyBuilder
       .addKeyPrefix(ECacheKeyMainPrefix.DATA)
       .addKeyPrefix(ECacheKeyDatabaseDataType.SET)
@@ -231,7 +202,7 @@ export class CacheKeyMapper implements ICacheKeyMapper {
       .build();
   }
 
-  mapItemBids = (id: string) => {
+  mapItemBids = (id) => {
     return this.cacheKeyBuilder
       .addKeyPrefix(ECacheKeyMainPrefix.DATA)
       .addKeyPrefix(ECacheKeyDatabaseDataType.LIST)
@@ -240,7 +211,7 @@ export class CacheKeyMapper implements ICacheKeyMapper {
       .build();
   }
 
-  mapLock = (key: string) => {
+  mapLock = (key) => {
     return this.cacheKeyBuilder.buildLock(key);
   }
 }

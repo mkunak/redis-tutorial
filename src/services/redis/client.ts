@@ -1,6 +1,7 @@
 import { createClient, defineScript } from 'redis';
 
 import { cacheKeyMapper } from '$services/keys';
+import { createIndexes } from './create-indexes';
 
 const client = createClient({
 	socket: {
@@ -9,6 +10,21 @@ const client = createClient({
 	},
 	password: process.env.REDIS_PW,
 	scripts: {
+		// lock: defineScript({}),
+		unlock: defineScript({
+			NUMBER_OF_KEYS: 1,
+			SCRIPT: `
+				if redis.call('GET', KEYS[1]) == ARGV[1] then
+					return redis.call('DEL', KEYS[1])
+				end
+			`,
+			transformArguments(key: string, value: string) {
+				return [key, value];
+			},
+			transformReply(reply, preserved) {
+				return reply;
+			},
+		}),
 		incrementOneAndStore: defineScript({
 			NUMBER_OF_KEYS: 1,
 			SCRIPT: `
@@ -52,7 +68,9 @@ const client = createClient({
 					userId,
 				];
 			},
-			transformReply(reply, preserved) {},
+			transformReply(reply, preserved) {
+				return reply;
+			},
 		}),
 	},
 });
@@ -63,6 +81,12 @@ client.on('connect', async () => {
 
 	const result = await client.get('books:count');
 	console.log('>>> client > on connect > books:count result:', result);
+
+	try {
+		await createIndexes();		
+	} catch (error) {
+		console.error(error);
+	}
 });
 client.on('error', (err) => console.error(err));
 client.connect();

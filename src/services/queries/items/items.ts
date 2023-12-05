@@ -61,6 +61,14 @@ class ItemByView {
 }
 
 
+interface QueryOpts {
+	page: number;
+	perPage: number;
+	sortBy: string;
+	direction: string;
+}
+
+
 export class ItemHandler {
   async createItem(attrs: CreateItemAttrs) {
     const itemId = genId();
@@ -92,7 +100,7 @@ export class ItemHandler {
   }
 
 
-  sortItemsByEndingTime = async (order: 'DESC' | 'ASC' = 'DESC', offset = 0, count = 10) => {
+  async sortItemsByEndingTime(order: 'DESC' | 'ASC' = 'DESC', offset = 0, count = 10) {
     const itemsIds = await client.zRange(
       cacheKeyMapper.mapItemsEndingAt(),
       Date.now(),
@@ -108,7 +116,7 @@ export class ItemHandler {
   }
 
 
-  sortItemsByViews = async (order: 'DESC' | 'ASC' = 'DESC', offset = 0, count = 10) => {
+  async sortItemsByViews(order: 'DESC' | 'ASC' = 'DESC', offset = 0, count = 10) {
     const getOptions = [
       '#',
       `${cacheKeyMapper.mapItem('*')}->name`,
@@ -142,7 +150,7 @@ export class ItemHandler {
     return items;
   }
 
-  sortItemsByPrice = async (order: 'DESC' | 'ASC' = 'DESC', offset = 0, count = 10) => {
+  async sortItemsByPrice(order: 'DESC' | 'ASC' = 'DESC', offset = 0, count = 10) {
     const getOptions = [
       '#',
       `${cacheKeyMapper.mapItem('*')}->name`,
@@ -174,5 +182,65 @@ export class ItemHandler {
     }
 
     return items;
+  }
+
+  async searchItems(term: string, size: number = 5) {
+    const searchString = term
+      .replaceAll(/[^a-zA-Z0-9 ]/g, '')
+      .trim()
+      .split(' ')
+      .filter((word) => !!word)
+      .map((word) => `%${word}%`)
+      .join(' ');
+
+    console.log('>>> searchString:', searchString);
+
+    // Look at cleaned and define if it is valid
+    if (searchString === '') {
+      return [];
+    }
+
+    const queryString = `(@name: (${searchString}) => { $weight: 5.0 }) | (@description: (${searchString}))`; // | 
+
+    // Use a redis client to do a real search
+    const result = await client.ft.search(
+      cacheKeyMapper.mapItemsIndex(),
+      queryString,
+      {
+        LIMIT: { from: 0, size }
+      },
+    );
+
+    // return deserialized search results
+    return result.documents.map((doc) => itemDataSerializer.deserialize(doc.id, doc.value as any));
+  }
+
+  async itemsByUser(userId: string, opts: QueryOpts) {
+    const queryString = `@ownerId: {${userId}}`;
+
+    const sortCriteria = opts.sortBy && opts.direction && {
+      BY: opts.sortBy,
+      DIRECTIONS: opts.direction,
+    };
+
+    const result = await client.ft.search(
+      cacheKeyMapper.mapItemsIndex(),
+      queryString,
+      {
+        ON: 'HASH',
+        SORTBY: sortCriteria,
+        LIMIT: { from: opts.page * opts.perPage, size: opts.perPage }
+      } as any,
+    );
+
+    console.log('>>> result.total:', result.total);
+    console.log('>>> result.documents:', result.documents);
+    console.log('>>> result.document.id:', result.documents[0].id.split('#')[1]);
+    console.log('>>> result.document.value:', result.documents[0].value);
+
+    return {
+      totalPages: Math.ceil(result.total / opts.perPage),
+      items: result.documents.map((doc) => itemDataSerializer.deserialize(doc.id.split('#')[1], doc.value as any)),
+    };
   }
 }
